@@ -182,5 +182,21 @@ negative `tx`.
   specific failure modes of any particular generator.
 - 11 real shots is a small sample, all from live-event cameras. No drone, no
   gimbal, no handheld documentary, no anamorphic, no heavy grain or film scan.
-- Measured at 320 px long edge. The defaults ship at 512.
 - `jerk broken` and `closure broken` have no positive control.
+
+## Resolution stability
+
+Measured at the shipped default of 512 px long edge. Re-run at 320 px, the maxima barely
+move, which is the frame-width normalisation doing its job:
+
+| metric | at 320 px | at 512 px |
+|---|---|---|
+| `incoherence` max | 0.00117 | 0.00099 |
+| `jerk` max | 1.78 | 1.78 |
+| `closure` max | 0.00169 | 0.00206 |
+
+**No real shot is `broken` at either resolution.** One difference is worth knowing: a
+panel shot that reads `clean` at 320 px gains a `soft breathing` at 512 px, because the
+finer analysis resolves a small real scale oscillation that the coarser one averages
+away. `soft` does not fail a gate, but it means a verdict at the margin can depend on
+`--max-side`, so compare clips at the same setting rather than across settings.

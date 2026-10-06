@@ -166,7 +166,9 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--write-calibration", action="store_true")
     ap.add_argument("--duration", type=float, default=8.0)
-    ap.add_argument("--max-side", type=int, default=320)
+    # The SHIPPED default, deliberately. Calibrating at a resolution the tool does
+    # not actually run at validates a configuration nobody uses.
+    ap.add_argument("--max-side", type=int, default=512)
     args = ap.parse_args()
 
     fails, rows = [], []
