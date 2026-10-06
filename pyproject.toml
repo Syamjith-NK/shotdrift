@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shotdrift"
+version = "0.1.0"
+description = "Measure whether a video holds the camera move it was given."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Syamjith NK", email = "hello@syamjithnk.com" }]
+keywords = [
+    "video", "camera", "cinematography", "ai-video", "quality-assurance",
+    "motion-estimation", "generative-video", "vfx", "measurement",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = ["numpy>=1.22", "pillow>=9"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/Syamjith-NK/shotdrift"
+Source = "https://github.com/Syamjith-NK/shotdrift"
+Issues = "https://github.com/Syamjith-NK/shotdrift/issues"
+
+[project.scripts]
+shotdrift = "shotdrift.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

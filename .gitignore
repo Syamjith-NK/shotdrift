@@ -1,0 +1,8 @@
+.venv/
+.relvenv/
+__pycache__/
+*.pyc
+dist/
+build/
+*.egg-info/
+calibration.json
