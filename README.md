@@ -9,6 +9,7 @@ frame — and reports whether one physical camera could have produced it.
 
 ```console
 $ pip install shotdrift
+$ python make_demo.py                      # writes pan_demo.mp4; re-derive the below
 $ shotdrift pan_demo.mp4 --expect push-in
 ```
 
@@ -18,18 +19,18 @@ pan_demo.mp4
 
   camera path
     dominant move      pan
-    pan                0.7159 of frame width (x -0.7159, y -0.0000)
+    pan                0.7781 of frame width (x -0.7781, y 0.0000)
     zoom               1.000x
-    roll               -0.00 deg
-    reversals          0  (measured, not judged)
-    jerk               0.35
+    roll               0.00 deg
+    reversals          1  (measured, not judged)
+    jerk               0.16
     incoherence        0.0000
-    morph              0.041  (used to find cuts, not judged)
+    morph              0.055  (used to find cuts, not judged)
     closure            0.0000
-    confidence         0.98
+    confidence         0.97
 
   asked for: push-in
-    NOT HELD - asked for push in / dolly in; zoom moved +0.0001, under the 0.02
+    NOT HELD - asked for push in / dolly in; zoom moved -0.0001, under the 0.02
                floor - that move did not happen
 
   no findings: the motion is consistent with one physical camera.
@@ -229,6 +230,13 @@ No ffmpeg, no temp file. Takes uint8 0..255 or float 0..1, greyscale or RGB(A),
 and a channels-first batch is refused by name rather than measured sideways.
 `report()` renders exactly what the command line prints — the CLI calls it, so
 the two surfaces cannot drift apart.
+
+⚠️ One break in 0.2: `Result` gained a `shots` list, and `path` / `findings` /
+`verdict` / `expect` became views over it. **Reading them is unchanged**, and a
+single-shot clip answers exactly as before — but `Result(path=...)` can no longer
+be *constructed* by hand. It also means `measure()` now segments on cuts, which
+is the point: before 0.2 the Python API measured an edited reel as one take while
+the command line did not.
 
 ## In ComfyUI
 

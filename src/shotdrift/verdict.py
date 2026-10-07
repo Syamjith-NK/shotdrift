@@ -46,8 +46,9 @@ CLEAN, SOFT, BROKEN, UNKNOWN = "clean", "soft", "broken", "unknown"
 _RANK = {CLEAN: 0, SOFT: 1, BROKEN: 2, UNKNOWN: 0}
 
 # --- bounds: frame-width units or dimensionless. calibration.md has the data. --
-# Measured maxima over 11 real single-camera shots are in brackets.
-INCOHERENCE_SOFT, INCOHERENCE_BROKEN = 0.004, 0.012      # [real max 0.00117]
+# Measured maxima over 24 real single-camera shots, two events, at the shipped
+# defaults, are in brackets.
+INCOHERENCE_SOFT, INCOHERENCE_BROKEN = 0.004, 0.012      # [real max 0.00068]
 JERK_SOFT, JERK_BROKEN = 1.9, 2.5
 # Jerk is a ratio with SPEED underneath it, so a shot has to be moving before the
 # smoothness of its moving means anything. MEASURED over 16 real shots: every one
@@ -125,7 +126,7 @@ def judge(p) -> list[Finding]:
             "No single camera explains how different parts of the frame moved.",
             f"median tile residual {p.incoherence:.5f} of frame width "
             f"(soft {INCOHERENCE_SOFT}, broken {INCOHERENCE_BROKEN}; "
-            f"real footage measures under 0.0012)",
+            f"real footage measures under 0.0007)",
             "Expected when a subject crosses a locked-off shot - that is not a fault. "
             "It is a fault when the whole frame should be rigid, which usually means "
             "parts of the picture are being moved independently of a camera.",

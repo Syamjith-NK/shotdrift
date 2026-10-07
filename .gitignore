@@ -6,3 +6,4 @@ dist/
 build/
 *.egg-info/
 calibration.json
+pan_demo.mp4

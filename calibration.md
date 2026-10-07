@@ -211,6 +211,30 @@ reads as a catastrophic failure on a clip that is in fact perfect. An anchor now
 to earn the right to contradict the chain, and an untrustworthy one is skipped:
 *cannot measure* must never be reported as *measured bad*.
 
+## Held-out footage — the check that is not circular
+
+The bounds above were set against the 24 shots in the calibration set, so measuring
+those same shots cannot tell you whether the bounds generalise or whether they were
+fitted to the sample. **21 further real clips were therefore run once, after the
+thresholds were frozen, and are not in the calibration set and not used to derive
+anything.** Conference soundbites, assembled previews, a one-minute panel.
+
+| | 21 held-out clips |
+|---|---|
+| `broken` | **0** |
+| `soft` | 7, every one `wander` |
+| clean | 14 |
+| failed to measure | 0 |
+
+The same clips under the **previous** rule — `breathing` gated on accumulated scale
+travel, with a `broken` bound above it — would have reported **`BROKEN` on 10 shots**.
+The scale amplitudes of those ten run from **0.0036 to 0.0229**: wobbles of a third of
+a percent to two percent, invisible to anyone watching. One of them reads a breathing
+ratio of **273** at an amplitude of 0.0044.
+
+That is the fix measured on footage it was not tuned against, and it is better evidence
+than the calibration table above, which by construction cannot surprise anyone.
+
 ## The harness passed while the tool was wrong
 
 The expensive one, found in 0.2.0, and the reason the defaults above are the
@@ -295,11 +319,21 @@ move, which is the frame-width normalisation doing its job:
 
 | metric | at 320 px | at 512 px |
 |---|---|---|
-| `incoherence` max | 0.00117 | 0.00099 |
-| `jerk` max | 1.78 | 1.78 |
-| `closure` max | 0.00169 | 0.00206 |
+| `incoherence` max | 0.00059 | 0.00068 |
+| `jerk` max | 2.316 | 2.345 |
+| `closure` max | 0.01177 | 0.00919 |
+| shots with a measurable `closure` | **23 of 24** | 24 of 24 |
 
-**No real shot is `broken` at either resolution.** One difference is worth knowing: a
+**No real shot is `broken` at either resolution.** Two differences are worth knowing.
+
+`closure` is the resolution-sensitive one: it runs 28% higher at 320 px, which leaves
+1.7x of headroom under the `soft` bound rather than 2.2x — and at 320 px **one shot's
+anchor stopped being trustworthy and was correctly skipped**, so that clip reports *not
+measurable* instead of a number. That is the intended behaviour and it is the honest
+cost of a coarser analysis: fewer tiles survive, and an anchor that cannot be trusted
+must not be allowed to contradict the chain.
+
+One more difference: a
 panel shot that reads `clean` at 320 px gains a `soft breathing` at 512 px, because the
 finer analysis resolves a small real scale oscillation that the coarser one averages
 away. `soft` does not fail a gate, but it means a verdict at the margin can depend on
