@@ -8,7 +8,7 @@ The usual check is a person watching sixty clips and forming an impression.
 frame — and reports whether one physical camera could have produced it.
 
 ```console
-$ pip install git+https://github.com/Syamjith-NK/shotdrift
+$ pip install shotdrift
 $ shotdrift pan_demo.mp4 --expect push-in
 ```
 
