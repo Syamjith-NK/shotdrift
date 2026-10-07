@@ -55,14 +55,60 @@ def test_nan_incoherence_is_unmeasurable():
 def test_static_shot_with_scale_noise_is_not_breathing():
     """REGRESSION: a locked-off real camera reported 'breathing 14.8x' because the
     net scale change was legitimately zero and noise was divided by it."""
-    f = judge(mkpath(breathing=14.8, scale_travel=0.0008))
+    f = judge(mkpath(breathing=14.8, scale_amp=0.0008))
+    assert [x.code for x in f] == []
+
+
+def test_long_static_shot_is_not_breathing():
+    """REGRESSION, and the expensive one: gated on ACCUMULATED scale travel, four
+    of seven real clips reported BROKEN. Travel is a cumulative sum, so a longer
+    clip of identical stillness clears any fixed gate - measured on a locked-off
+    stage camera, travel walked 0.0025 at 100 frames to 0.0263 at 1200 while the
+    per-pair rate stayed flat at 2e-5. These are that clip's real numbers.
+    """
+    f = judge(mkpath(n_pairs=1199, breathing=65.4, scale_travel=0.0263,
+                     scale_amp=0.0095))
     assert [x.code for x in f] == []
 
 
 def test_real_pulsing_is_breathing():
-    f = judge(mkpath(breathing=46.0, scale_travel=1.29))
+    f = judge(mkpath(breathing=46.0, scale_amp=0.327))
     assert [x.code for x in f] == ["breathing"]
-    assert worst(f) == BROKEN
+
+
+def test_breathing_is_never_broken():
+    """An operator zooming in and back out measures as breathing, and scores WORSE
+    on it than the deliberate fault: real operated footage reached a ratio of 169
+    with an amplitude of 0.277, against 46 / 0.327 for the synthetic pulse. No
+    bound separates them, so this can be reported and must not block.
+    """
+    f = judge(mkpath(breathing=169.5, scale_amp=0.277))
+    assert [x.code for x in f] == ["breathing"]
+    assert worst(f) == SOFT
+
+
+def test_creeping_camera_is_not_judged_on_smoothness():
+    """REGRESSION: the jerkiest shot in the real-footage set was a locked-off stage
+    camera that crept 0.026 of a frame width over 327 frames. Net displacement
+    cleared the 0.01 floor, but jerk is normalised BY SPEED and there was none, so
+    it read 2.35 - higher than every deliberately broken control. These are its
+    real numbers.
+    """
+    f = judge(mkpath(n_pairs=326, dominant="pan", jerk=2.35, net_pan=0.0256,
+                     speed=2.81e-4, path_length=0.079, wander=3.1))
+    assert [x.code for x in f] == []
+
+
+def test_snapping_move_at_real_speed_is_still_jerk():
+    """The gate must not disarm the check: a control with a genuine move keeps it."""
+    f = judge(mkpath(dominant="pan", jerk=2.28, net_pan=0.0474, speed=1.58e-2,
+                     path_length=0.74, wander=15.7))
+    assert "jerk" in [x.code for x in f]
+
+
+def test_short_fragment_is_not_judged_on_oscillation():
+    """A 9-frame fragment between two cuts has no oscillation to measure."""
+    assert judge(mkpath(n_pairs=8, breathing=14.7, scale_amp=0.089)) == []
 
 
 def test_static_shot_with_jitter_is_not_wander():
@@ -83,7 +129,7 @@ def test_jerk_is_silent_below_real_footage_maximum():
 
 
 def test_jerk_fires_above_the_bound():
-    f = judge(mkpath(dominant="zoom", zoom=1.2, jerk=2.6))
+    f = judge(mkpath(dominant="zoom", zoom=1.2, jerk=2.6, speed=1.4e-2))
     assert [x.code for x in f] == ["jerk"]
     assert worst(f) == BROKEN
 
@@ -91,7 +137,8 @@ def test_jerk_fires_above_the_bound():
 def test_shape_checks_need_enough_frame_pairs():
     """A 20-frame fragment between two cuts was reported BROKEN on a third
     derivative. Below the minimum, shape is not judged at all."""
-    assert judge(mkpath(n_pairs=10, dominant="zoom", zoom=1.2, jerk=9.0)) == []
+    assert judge(mkpath(n_pairs=10, dominant="zoom", zoom=1.2, jerk=9.0,
+                        speed=1.4e-2)) == []
 
 
 def test_jerk_ignored_on_a_channel_that_never_moved():

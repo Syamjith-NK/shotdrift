@@ -25,6 +25,13 @@ measurement cannot do is as useful to a reader as what it can:
     "worse" than the fault, so the count carries no signal on its own. The
     question it was trying to answer is answered properly by --expect, where
     backtracked travel is measured against the move that was actually asked for.
+
+AND ONE CHECK WAS DEMOTED FROM broken TO soft, for the third instance of exactly
+that pattern: `breathing`. An operator zooming in and coming back out IS scale
+oscillating without going anywhere. Measured, real operated footage reached a
+ratio of 169 at an amplitude of 0.277 against 46 / 0.327 for the synthetic pulse
+- so the real material is worse than the fault on the ratio and comparable on the
+amplitude, and no bound in either separates them. Reported, never blocking.
 """
 
 from __future__ import annotations
@@ -41,10 +48,25 @@ _RANK = {CLEAN: 0, SOFT: 1, BROKEN: 2, UNKNOWN: 0}
 # --- bounds: frame-width units or dimensionless. calibration.md has the data. --
 # Measured maxima over 11 real single-camera shots are in brackets.
 INCOHERENCE_SOFT, INCOHERENCE_BROKEN = 0.004, 0.012      # [real max 0.00117]
-JERK_SOFT, JERK_BROKEN = 1.9, 2.5                        # [real max 1.78]
+JERK_SOFT, JERK_BROKEN = 1.9, 2.5
+# Jerk is a ratio with SPEED underneath it, so a shot has to be moving before the
+# smoothness of its moving means anything. MEASURED over 16 real shots: every one
+# that read above jerk 1.0 was a near-static camera, RMS speed 2.8e-4 to 3.0e-3,
+# while every control with a genuine move sat at 1.4e-2 to 4.8e-2 - a 4.6x gap
+# with nothing in it. Without this floor the jerkiest shot in the real set was a
+# locked-off stage camera that crept 2.5% of a frame width in eleven seconds.
+JERK_MIN_SPEED = 0.005                                   # frame widths per frame
 WANDER_SOFT = 4.0                                        # soft-capped on purpose
 WANDER_MIN_TRAVEL = 0.05                                 # must be visible travel
-BREATHING_SOFT, BREATHING_BROKEN = 4.0, 10.0
+BREATHING_SOFT = 4.0                                     # soft-capped on purpose
+# Peak-to-peak log-scale excursion a shot must show before an oscillation in it
+# means anything. MEASURED over 24 real shots at the shipped configuration: 20 sit
+# under this gate and the highest of those is 0.035 - a 3.5% scale wobble, which
+# is a 20-frame fragment's worth of noise - while the synthetic breathing fault
+# reaches 0.327. So 8.2x of headroom above and only 1.14x below, stated plainly
+# because the asymmetry is real. The consequence of a real shot crossing it is a
+# SOFT finding, never a block, which is what makes that margin acceptable.
+BREATHING_MIN_AMP = 0.04
 CLOSURE_SOFT, CLOSURE_BROKEN = 0.02, 0.06                # [real max 0.0017]
 MIN_CONFIDENCE = 0.30
 # Jerk is a third derivative. Below this many frame pairs it is noise, and a
@@ -113,14 +135,14 @@ def judge(p) -> list[Finding]:
         moved_now = {"pan": p.net_pan >= MOVED_PAN,
                      "zoom": abs(np.log(max(p.zoom, 1e-6))) >= MOVED_ZOOM,
                      "roll": abs(p.net_roll) >= MOVED_ROLL}
-        if moved_now.get(p.dominant, False):
+        if moved_now.get(p.dominant, False) and p.speed >= JERK_MIN_SPEED:
             lvl = _lvl(p.jerk, JERK_SOFT, JERK_BROKEN)
             if lvl != CLEAN:
                 out.append(Finding(
                     "jerk", lvl,
                     "The camera's speed snaps between values instead of changing smoothly.",
-                    f"normalised jerk {p.jerk:.2f} on the {p.dominant} channel "
-                    f"(soft {JERK_SOFT}, broken {JERK_BROKEN}; real footage reaches 1.78)",
+                    f"normalised jerk {p.jerk:.2f} on the {p.dominant} channel at speed "
+                    f"{p.speed:.1e} (soft {JERK_SOFT}, broken {JERK_BROKEN})",
                     "A camera is carried by something with mass, so its velocity changes "
                     "smoothly. This is what makes a move read as synthetic even when its "
                     "start and end positions are right.",
@@ -146,18 +168,26 @@ def judge(p) -> list[Finding]:
 
     # No net-zoom condition here. Requiring the net to be ~zero let int-rounding
     # in a control push it over the line, and the ratio already expresses the
-    # idea; the absolute travel gate is what stops a static shot's measurement
-    # noise, divided by a zero net change, reporting a tripod as "breathing 23x".
-    if p.scale_travel >= MOVED_ZOOM:
-        lvl = _lvl(p.breathing, BREATHING_SOFT, BREATHING_BROKEN)
+    # idea; the gate is what stops a static shot's measurement noise, divided by
+    # a zero net change, reporting a tripod as "breathing 23x".
+    #
+    # The gate is on AMPLITUDE, not on accumulated travel, and that correction is
+    # the whole story of this check. Gated on travel - a cumulative sum against a
+    # fixed bound - four of seven real clips reported BROKEN, because 600 frames
+    # of sub-pixel noise sums past any fixed number while the per-pair rate stays
+    # flat. Amplitude does not grow with length, and it is what a viewer sees.
+    if p.scale_amp >= BREATHING_MIN_AMP and len(p.pairs) >= MIN_PAIRS_FOR_SHAPE:
+        lvl = _lvl(p.breathing, BREATHING_SOFT, None)
         if lvl != CLEAN:
             out.append(Finding(
                 "breathing", lvl,
                 "Scale oscillates without going anywhere.",
                 f"accumulated absolute scale change is {p.breathing:.1f}x the net change "
-                f"(travel {p.scale_travel:.3f}; soft {BREATHING_SOFT}, broken {BREATHING_BROKEN})",
+                f"(amplitude {p.scale_amp:.3f}; soft {BREATHING_SOFT})",
                 "The frame is pulsing, not pushing in. On a big screen it reads as the shot "
-                "'swimming' even when a viewer cannot say why.",
+                "'swimming' even when a viewer cannot say why. Never reported as broken: an "
+                "operator riding a zoom rocker in and back out is indistinguishable from "
+                "this, and scores worse on it than the deliberate fault does.",
             ))
 
     lvl = _lvl(p.closure, CLOSURE_SOFT, CLOSURE_BROKEN)

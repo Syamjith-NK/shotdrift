@@ -40,6 +40,14 @@ REAL = [
     ("main stage wide", "../livex_governing/mainstage_1052.mp4"),
     ("event highlight cut", "../livex_autohighlight/out/s03_highlight.mp4"),
     ("event highlight cut 2", "../livex_autohighlight/out/s19_highlight.mp4"),
+    # A SECOND event: different venue, different cameras, different codecs and a
+    # 4K source. One event's camera package is one sample of "real footage", and
+    # a bound calibrated on it is calibrated on that package.
+    ("opening remarks, house mix", "../livex_wjh/out/WJH_Opening_Remarks_selects_HOUSEMIX.mp4"),
+    ("panel, full answer", "../livex_panel/LIVEX_PANEL_FULL_ANSWER.mp4"),
+    ("conference soundbite", "../dge_aie_highlight/soundbites/01_AlKuttab_10s.mp4"),
+    ("conference soundbite 2", "../dge_aie_highlight/soundbites/06_AlAskar_panel_10s.mp4"),
+    ("graded 4K opener", "../dge_aie_highlight/intro/DGE_AIE_intro_4K.mp4"),
 ]
 
 
@@ -145,7 +153,7 @@ CONTROLS = [
     ("clean pan-right",       c_clean_pan,        "pan-right", CLEAN,  None,          False),
     ("push-in that reverses", c_reversing_push,   "push-in",   CLEAN,  None,          True),
     ("pan sold as push-in",   c_pan_sold_as_push, "push-in",   CLEAN,  None,          True),
-    ("breathing, net zero",   c_breathing,        "static",    BROKEN, "breathing",   True),
+    ("breathing, net zero",   c_breathing,        "static",    SOFT,   "breathing",   True),
     ("wander, net zero",      c_wander,           "static",    SOFT,   "wander",      True),
     ("two layers, opposite",  c_two_layers,       None,        BROKEN, "incoherent",  False),
 ]
@@ -165,9 +173,17 @@ LIMITATIONS = [
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--write-calibration", action="store_true")
-    ap.add_argument("--duration", type=float, default=8.0)
-    # The SHIPPED default, deliberately. Calibrating at a resolution the tool does
-    # not actually run at validates a configuration nobody uses.
+    # The SHIPPED defaults, deliberately - calibrating at a configuration the tool
+    # does not actually run at validates a configuration nobody uses. That is not
+    # a precaution, it is the hole this harness fell through: with an 8-second
+    # window these clips were silent and VALIDATION PASSED, while `shotdrift
+    # <same file>` reported BROKEN on four of seven, because the breathing gate
+    # was a cumulative sum and 8 seconds sat just under it. A control that does
+    # not measure what ships cannot validate what ships.
+    ap.add_argument("--duration", type=float, default=None,
+                    help="seconds per clip (default: the whole clip, as shipped)")
+    ap.add_argument("--max-frames", type=int, default=600,
+                    help="the tool's own default frame budget")
     ap.add_argument("--max-side", type=int, default=512)
     args = ap.parse_args()
 
@@ -178,7 +194,8 @@ def main() -> int:
     print("=" * 78)
     for label, path in REAL:
         try:
-            c = load(path, max_side=args.max_side, duration=args.duration)
+            c = load(path, max_side=args.max_side, duration=args.duration,
+                     max_frames=args.max_frames)
         except Exception as e:                                    # noqa: BLE001
             print(f"  SKIP {label}: {e}")
             continue

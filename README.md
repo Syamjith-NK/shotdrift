@@ -83,8 +83,8 @@ the same code.
 
 Severities are `clean`, `soft`, `broken`. `soft` exists so that a real camera with
 a person walking through it can be *reported* without being *blocked* — the first
-thing anyone does with a noisy alarm is stop reading it. Gate CI on
-`--min-severity broken`.
+thing anyone does with a noisy alarm is stop reading it. `broken` is the default
+exit gate; `--min-severity soft` makes it strict.
 
 ## Declared moves
 
@@ -159,20 +159,51 @@ Thresholds are not taste. Every bound was set by measuring real single-camera
 footage and synthetic controls with known faults; `calibration.md` records the
 distributions and `validate_real.py` re-derives them.
 
-The requirement that shaped the tool is **silence on real footage**: across 11
-shots of real material, nothing fires except one `soft wander` on a stage camera
-that genuinely reframed and came back.
+The requirement that shaped the tool is **silence on real footage**: across 24
+shots from two events, nothing `broken` fires, and the three `soft` findings are
+all genuine operator behaviour — two stage cameras that reframed and came back,
+one of which also zoomed in and back out.
 
-| measured over 11 real shots | max | soft at | broken at |
+| measured over 24 real shots | real max | gate | soft at |
 |---|---|---|---|
-| `incoherence` | 0.00117 | 0.004 | 0.012 |
-| `jerk` | 1.78 | 1.9 | 2.5 |
-| `closure` | 0.0017 | 0.02 | 0.06 |
+| `incoherence` | 0.00068 | — | 0.004 |
+| `closure` | 0.0092 | — | 0.02 |
+| `jerk` | 2.35 | `speed` ≥ 0.005 | 1.9 |
+| `breathing` | 110 | `scale_amp` ≥ 0.04 | 4.0 |
+| `wander` | 52 | travel ≥ 0.05 | 4.0 |
 
-Three false positives were found by pointing it at real footage rather than at
-fixtures, and two of them were the same mistake: a ratio whose denominator is
-legitimately zero on a static shot. A locked-off tripod was reported as
-"breathing 14.8x", and sub-pixel jitter as wander. Both are regression tests now.
+**Three of those five are gated rather than thresholded, and that is the most
+useful thing in this README.** They are ratios, and on a locked-off camera each
+denominator is legitimately near zero, so noise divided by nothing produces an
+enormous number on the most ordinary footage there is. Real maxima of 2.3, 110 and
+52 against bounds of 1.9 and 4.0 are not near-misses — the ratios have come apart,
+and no bound can be raised to cover that without covering every real fault too.
+What works is refusing to judge the quality of a move until there demonstrably
+*was* one. Every gate above has a measured gap behind it: real footage reaches a
+speed of 0.003 where the slowest control with a genuine move sits at 0.014.
+
+### The harness passed while the tool was wrong
+
+Worth the paragraph because it is the failure mode of every calibrated tool.
+
+`shotdrift <clip>` reported **`BROKEN` on four of seven real clips** while
+`validate_real.py` printed `VALIDATION PASSED` — same code, same files, same
+afternoon. The harness measured the first **8 seconds**; the tool measures **600
+frames**. And `breathing` was gated on *accumulated* scale change against a fixed
+bound, which on a locked-off camera walks 0.0025 at 100 frames to 0.0263 at 1200
+while the per-frame rate stays flat at 2e-5. The gate was crossed somewhere past
+500 frames by nothing but clip length, and 8 seconds at 50p is 400 frames — just
+underneath it.
+
+So: **a fixed bound on a cumulative quantity is a time bomb**, and **a control
+that does not run the shipped configuration validates a configuration nobody
+uses**. The gate is now peak-to-peak amplitude, which does not grow with length
+and is what a viewer can actually see, and the harness defaults to the whole clip.
+
+`breathing` also lost its `broken` bound in the same round, for the third
+instance of the pattern this tool keeps running into: real operated footage
+reached a breathing ratio of 169 against the deliberate fault's 46. An operator
+zooming in and back out *is* scale oscillating without going anywhere.
 
 ## Python
 
@@ -181,9 +212,31 @@ from shotdrift import measure
 
 r = measure("take_07.mp4", expect="push-in")
 print(r.verdict, r.ok)
-for f in r.findings:
-    print(f.severity, f.code, f.evidence)
+for s in r.shots:                      # cuts are detected; one entry per shot
+    print(s.start, s.end, s.verdict, [f.code for f in s.findings])
 ```
+
+### Frames you never wrote to disk
+
+```python
+from shotdrift import measure_frames, report
+
+r = measure_frames(batch, expect="push-in")   # (n, h, w, c), numpy or torch
+print(report(r))
+```
+
+No ffmpeg, no temp file. Takes uint8 0..255 or float 0..1, greyscale or RGB(A),
+and a channels-first batch is refused by name rather than measured sideways.
+`report()` renders exactly what the command line prints — the CLI calls it, so
+the two surfaces cannot drift apart.
+
+## In ComfyUI
+
+[**shotdrift-comfyui**](https://github.com/Syamjith-NK/shotdrift-comfyui) measures
+the batch inside the graph that produced it, and can stop the queue when a take
+does not hold the move it was given. That is the point of measuring here rather
+than afterwards: an unattended run of sixty takes is only worth doing if the bad
+ones announce themselves.
 
 ## Requirements
 
@@ -195,8 +248,8 @@ get run.
 
 ```console
 pip install -e ".[test]"
-pytest -q                                  # 43 tests
-PYTHONPATH=src python validate_real.py     # real footage + controls
+pytest -q                                  # 83 tests
+PYTHONPATH=src python validate_real.py     # real footage + controls, as shipped
 ```
 
 MIT. Built by [Syamjith NK](https://syamjithnk.com) — cinematographer and AI

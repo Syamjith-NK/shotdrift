@@ -53,10 +53,13 @@ class Path:
     zoom: float = 1.0
     breathing: float = 1.0
     scale_travel: float = 0.0
+    scale_amp: float = 0.0                    # peak-to-peak log scale (length-independent)
+    scale_rate: float = 0.0                   # mean per-pair |log scale| change
     net_roll: float = 0.0
     dominant: str = "static"
     reversals: int = 0
     jerk: float = 0.0
+    speed: float = 0.0                        # RMS per-pair speed, dominant channel
     incoherence: float = 0.0
     morph: float = 0.0
     morph_trend: float = 0.0
@@ -224,10 +227,27 @@ def analyse(frames: np.ndarray, grid: int = 4, anchors: int = 4,
     # tripod as "breathing 14.8x". Keep the absolute travel beside the ratio so
     # the verdict layer can ask whether anything actually happened first.
     p.scale_travel = total_abs_ls
+    # ...and scale_travel is NOT the right thing to gate on, which cost four
+    # false BROKENs on real footage. It is a CUMULATIVE SUM, so it grows with
+    # clip length while the thing it is standing in for - "did the scale visibly
+    # move?" - does not. MEASURED on a locked-off stage camera: the per-pair rate
+    # is flat at ~2e-5 at every length, and scale_travel walks 0.0025 (100
+    # frames) -> 0.0263 (1200 frames), crossing any fixed gate purely by running
+    # longer. The amplitude of the scale curve is the length-independent
+    # quantity, and it is also the one a viewer can actually see.
+    p.scale_amp = float(ls.max() - ls.min()) if len(ls) else 0.0
+    p.scale_rate = float(total_abs_ls / max(len(pairs), 1))
     p.net_roll = float(rl[-1])
     p.dominant = dominant
     p.reversals = _reversals(vel, floor)
     p.jerk = _jerk(chan, floor)
+    # Jerk is normalised BY SPEED, so the speed has to be reported beside it or
+    # the verdict layer cannot tell a snapping move from a camera that is barely
+    # moving at all. Net displacement is not a substitute: a locked-off stage
+    # camera crept 0.026 of a frame width over 327 frames, cleared the 0.01
+    # displacement floor, and had an RMS speed of 2.8e-4 - which is how it came
+    # to be reported as the jerkiest shot in the whole real-footage set.
+    p.speed = float(np.sqrt(np.mean(vel ** 2))) if len(vel) else 0.0
     p.incoherence = floor
     p.morph = float(np.nanmedian(mor)) if np.isfinite(mor).any() else float("nan")
     p.morph_trend = trend

@@ -19,6 +19,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .ingest import analysis_size
+
 
 class FFmpegMissing(RuntimeError):
     pass
@@ -37,6 +39,7 @@ class Clip:
     src_height: int         # original height (px)
     fps: float
     duration: float
+    truncated: bool = False   # hit the frame budget with picture still to come
 
     def __len__(self) -> int:
         return int(self.frames.shape[0])
@@ -93,11 +96,7 @@ def load(path: str, max_side: int = 512, sample_fps: float | None = None,
     if sw <= 0 or sh <= 0:
         raise DecodeError(f"{path} reports a {sw}x{sh} frame size.")
 
-    scale = min(1.0, max_side / max(sw, sh))
-    w = max(16, int(round(sw * scale)))
-    h = max(16, int(round(sh * scale)))
-    w -= w % 2
-    h -= h % 2
+    w, h = analysis_size(sw, sh, max_side)
 
     cmd = [_exe("ffmpeg"), "-v", "error"]
     if start > 0:
@@ -126,5 +125,11 @@ def load(path: str, max_side: int = 512, sample_fps: float | None = None,
         )
     frames = buf[: n * stride].reshape(n, h, w).astype(np.float32) / 255.0
     eff_fps = float(sample_fps) if sample_fps else meta["fps"]
+    # A frame budget that silently drops the rest of the clip is how a tool comes
+    # to report confidently on the first twelve seconds of a two-minute take. The
+    # window is reported, not assumed.
+    window = duration if duration is not None else max(0.0, meta["duration"] - start)
+    expected = window * eff_fps if (window and eff_fps) else 0.0
+    truncated = bool(n >= max_frames and expected > n + 1)
     return Clip(frames=frames, width=w, height=h, src_width=sw, src_height=sh,
-                fps=eff_fps, duration=meta["duration"])
+                fps=eff_fps, duration=meta["duration"], truncated=truncated)
