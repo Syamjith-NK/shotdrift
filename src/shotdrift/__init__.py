@@ -21,5 +21,5 @@ from __future__ import annotations
 
 from .core import Result, Shot, measure, measure_frames, report
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __all__ = ["measure", "measure_frames", "report", "Result", "Shot", "__version__"]
