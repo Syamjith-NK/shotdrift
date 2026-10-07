@@ -9,7 +9,15 @@ frame — and reports whether one physical camera could have produced it.
 
 ```console
 $ pip install shotdrift
-$ python make_demo.py                      # writes pan_demo.mp4; re-derive the below
+$ shotdrift your_take.mp4 --expect push-in
+```
+
+The example below uses a clip you can build rather than one you have to take on
+trust — `make_demo.py` lives in this repository, not in the wheel:
+
+```console
+$ git clone https://github.com/Syamjith-NK/shotdrift && cd shotdrift
+$ python make_demo.py                      # writes pan_demo.mp4
 $ shotdrift pan_demo.mp4 --expect push-in
 ```
 
