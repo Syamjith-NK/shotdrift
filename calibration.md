@@ -1,10 +1,19 @@
 # Calibration
 
-Every threshold in `verdict.py` came from this measurement. Re-derive it with:
+The tables below are historical measurements, not a fresh validation of the
+0.2.2 coverage rules. The original media are not included in this repository.
+Full validation requires all configured files, sufficient frame budget, no
+unmeasurable spans, and a minimum measurable shot count. Missing evidence fails
+the run. Supply a JSON manifest of `label`, `path`, `sha256` entries:
 
 ```console
-PYTHONPATH=src python validate_real.py --write-calibration
+python validate_real.py --real-manifest /path/to/clips.json --min-real-shots 24 --write-calibration
 ```
+
+Paths are relative to the manifest. Increase `--max-frames` for longer clips;
+600 frames cannot validate an entire longer take. For the publicly reproducible
+synthetic tests alone, run `python validate_real.py --controls-only`. That command
+prints `real footage NOT VALIDATED`; it does not reproduce the tables below.
 
 The governing requirement is **silence on real footage**. A measurement tool that
 flags genuine material trains the person reading it to ignore it, so a bound is

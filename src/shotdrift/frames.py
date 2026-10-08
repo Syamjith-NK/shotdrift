@@ -91,6 +91,14 @@ def load(path: str, max_side: int = 512, sample_fps: float | None = None,
     default therefore keeps every frame; `--sample-fps` exists for long clips
     and says so in the report.
     """
+    from .validation import finite, integer
+    integer("max_side", max_side, 16)
+    integer("max_frames", max_frames, 2)
+    finite("start", start)
+    if duration is not None:
+        finite("duration", duration, positive=True)
+    if sample_fps is not None:
+        finite("sample_fps", sample_fps, positive=True)
     meta = probe(path)
     sw, sh = meta["width"], meta["height"]
     if sw <= 0 or sh <= 0:

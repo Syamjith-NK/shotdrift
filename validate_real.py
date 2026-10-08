@@ -19,16 +19,20 @@ Run:  PYTHONPATH=src python validate_real.py [--write-calibration]
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+from pathlib import Path
 import sys
 
 import numpy as np
 from PIL import Image
 
-sys.path.insert(0, "src")
+BASE = Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE / "src"))
 
 from shotdrift.expect import check as check_expect          # noqa: E402
 from shotdrift.frames import load                            # noqa: E402
+from shotdrift import measure                                # noqa: E402
 from shotdrift.path import analyse, analyse_clip             # noqa: E402
 from shotdrift.verdict import BROKEN, CLEAN, SOFT, judge, worst  # noqa: E402
 
@@ -170,7 +174,24 @@ LIMITATIONS = [
      "separates invented geometry from a real scene with things happening in it."),
 ]
 
-def main() -> int:
+def real_sources(manifest=None):
+    """A manifest binds each external clip to its expected SHA-256 content."""
+    if manifest is None:
+        return [(label, BASE / path, None) for label, path in REAL]
+    manifest = Path(manifest).resolve()
+    items = json.loads(manifest.read_text())
+    if not isinstance(items, list) or not items:
+        raise ValueError("real manifest must be a nonempty JSON list")
+    sources = []
+    for item in items:
+        digest = item["sha256"].lower()
+        if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise ValueError("each manifest entry requires a SHA-256 digest")
+        sources.append((item["label"], manifest.parent / item["path"], digest))
+    return sources
+
+
+def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--write-calibration", action="store_true")
     # The SHIPPED defaults, deliberately - calibrating at a configuration the tool
@@ -185,34 +206,56 @@ def main() -> int:
     ap.add_argument("--max-frames", type=int, default=600,
                     help="the tool's own default frame budget")
     ap.add_argument("--max-side", type=int, default=512)
-    args = ap.parse_args()
+    ap.add_argument("--controls-only", action="store_true",
+                    help="run synthetic controls only; does not validate real-footage calibration")
+    ap.add_argument("--real-manifest", help="JSON list of label, path, sha256; paths relative to manifest")
+    ap.add_argument("--min-real-shots", type=int, default=1,
+                    help="minimum measurable real shots for full validation (default 1)")
+    args = ap.parse_args(argv)
+    if args.min_real_shots < 1:
+        ap.error("--min-real-shots must be >= 1")
+    if args.controls_only and args.real_manifest:
+        ap.error("--controls-only cannot be combined with --real-manifest")
+    try:
+        sources = [] if args.controls_only else real_sources(args.real_manifest)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        ap.error(f"invalid real manifest: {e}")
 
     fails, rows = [], []
 
     print("=" * 78)
     print("REAL FOOTAGE - requirement: no BROKEN finding on real camera material")
     print("=" * 78)
-    for label, path in REAL:
+    for label, path, digest in sources:
         try:
-            c = load(path, max_side=args.max_side, duration=args.duration,
-                     max_frames=args.max_frames)
+            if digest:
+                h = hashlib.sha256()
+                with path.open("rb") as fh:
+                    for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                        h.update(chunk)
+                if h.hexdigest() != digest:
+                    raise ValueError("SHA-256 mismatch")
+            result = measure(str(path), max_side=args.max_side, duration=args.duration,
+                             max_frames=args.max_frames)
         except Exception as e:                                    # noqa: BLE001
-            print(f"  SKIP {label}: {e}")
+            print(f"  FAIL {label}: {e}")
+            fails.append(f"REAL {label}: unavailable or invalid ({e})")
             continue
-        shots, cuts = analyse_clip(c.frames)
-        for i, ((a, b), p) in enumerate(shots):
-            f = judge(p)
-            v = worst(f)
+        if not result.complete:
+            fails.append(f"REAL {label}: incomplete measurement (unknown spans or frame budget)")
+        for i, shot in enumerate(result.shots):
+            a, b, p = shot.start, shot.end, shot.path
+            f, v = shot.findings, shot.verdict
             codes = ",".join(sorted({x.code for x in f})) or "-"
             tag = "OK " if v in (CLEAN, SOFT) else "FAIL"
-            if v == BROKEN:
-                fails.append(f"REAL {label} shot{i} -> BROKEN ({codes})")
-            print(f"  {tag} {label[:26]:<26} shot{i} {b - a:>4}f  cuts={len(cuts):<3} "
+            if v not in (CLEAN, SOFT):
+                fails.append(f"REAL {label} shot{i} -> {v} ({codes})")
+            print(f"  {tag} {label[:26]:<26} shot{i} {b - a:>4}f  cuts={len(result.cuts):<3} "
                   f"{v:<6} {codes}")
             rows.append(dict(kind="real", label=label, shot=i, span=int(b - a),
-                             cuts=len(cuts), verdict=v,
+                             cuts=len(result.cuts), verdict=v,
                              **{k: (None if isinstance(x, float) and not np.isfinite(x) else x)
-                                for k, x in p.summary().items()}))
+                                for k, x in (p.summary() if p else {}).items()}))
 
     print()
     print("=" * 78)
@@ -264,6 +307,9 @@ def main() -> int:
         rows.append(dict(kind="limitation", label=label, verdict=v, why=why))
 
     real = [r for r in rows if r["kind"] == "real"]
+    measured_real = [r for r in real if r["verdict"] in (CLEAN, SOFT)]
+    if not args.controls_only and len(measured_real) < args.min_real_shots:
+        fails.append(f"only {len(measured_real)} measurable real shots; need {args.min_real_shots}")
     print()
     print("=" * 78)
     print("MEASURED DISTRIBUTIONS - where the thresholds come from")
@@ -276,7 +322,7 @@ def main() -> int:
 
     if args.write_calibration:
         with open("calibration.json", "w") as fh:
-            json.dump(rows, fh, indent=1, default=str)
+            json.dump(rows, fh, indent=1, allow_nan=False)
         print("\n  wrote calibration.json")
 
     print()
@@ -285,8 +331,11 @@ def main() -> int:
         for x in fails:
             print("  -", x)
         return 1
-    print(f"VALIDATION PASSED - {len(real)} real shots silent-or-soft, "
-          f"{len(CONTROLS)} controls named correctly")
+    if args.controls_only:
+        print(f"CONTROLS PASSED - {len(CONTROLS)} synthetic controls; real footage NOT VALIDATED")
+    else:
+        print(f"VALIDATION PASSED - {len(measured_real)} real shots silent-or-soft, "
+              f"{len(CONTROLS)} controls named correctly")
     return 0
 
 

@@ -1,0 +1,2 @@
+include make_demo.py validate_real.py calibration.md
+recursive-include tests *.py

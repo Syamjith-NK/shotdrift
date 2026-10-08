@@ -70,7 +70,8 @@ class Path:
     def summary(self) -> dict:
         d = {k: v for k, v in asdict(self).items()
              if not isinstance(v, (np.ndarray, list))}
-        return {k: (round(v, 6) if isinstance(v, float) else v) for k, v in d.items()}
+        return {k: (round(v, 6) if np.isfinite(v) else None)
+                if isinstance(v, float) else v for k, v in d.items()}
 
 
 def find_cuts(pairs: list[Pair]) -> list[int]:
@@ -155,6 +156,8 @@ def _jerk(pos: np.ndarray, floor: float) -> float:
 
 def analyse(frames: np.ndarray, grid: int = 4, anchors: int = 4,
             pairs: list[Pair] | None = None) -> Path:
+    from .validation import analysis_options
+    analysis_options(grid, anchors)
     n = int(frames.shape[0])
     if n < 2:
         raise ValueError("need at least two frames")
@@ -301,7 +304,11 @@ def analyse_clip(frames: np.ndarray, grid: int = 4, anchors: int = 4,
     The per-pair estimates are computed ONCE and sliced, so segmenting costs
     nothing over measuring the file as a single take.
     """
+    from .validation import analysis_options
+    analysis_options(grid, anchors)
     n = int(frames.shape[0])
+    if n < 2:
+        raise ValueError("need at least two frames")
     pairs = [estimate_pair(frames[i], frames[i + 1], grid=grid) for i in range(n - 1)]
     cuts = find_cuts(pairs) if segment else []
     ranges = shot_ranges(n, cuts) if cuts else [(0, n)]

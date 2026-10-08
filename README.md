@@ -4,8 +4,10 @@
 
 Generative video is given a camera move and is under no obligation to deliver it.
 The usual check is a person watching sixty clips and forming an impression.
-`shotdrift` measures the camera path out of the pixels — pan, zoom, roll, frame by
-frame — and reports whether one physical camera could have produced it.
+`shotdrift` estimates 2D image motion — pan, scale and roll, frame by frame —
+and checks a declared movement's amount, direction and backtracking. It is an
+experimental checker, not a physical 3D camera solve or a validated AI-video
+acceptance system.
 
 ```console
 $ pip install shotdrift
@@ -41,16 +43,18 @@ pan_demo.mp4
     NOT HELD - asked for push in / dolly in; zoom moved -0.0001, under the 0.02
                floor - that move did not happen
 
-  no findings: the motion is consistent with one physical camera.
+  no findings in the measured 2D image motion.
 ```
 
-That clip is a perfectly good shot — smooth, coherent, one physical camera. It is
+That clip is a synthetic, smooth and coherent pan. It is
 also not the shot that was ordered: it pans, and the push-in never happened. Both facts matter and they are reported
-separately, because "is this a real camera move?" and "is it the move I asked
-for?" are different questions.
+separately: motion findings and the requested movement are different checks.
 
 Exit codes make it usable in a loop: `0` clean, `1` findings at or above
-`--min-severity`, `2` could not run, `3` the clip could not be measured.
+`--min-severity`, `2` could not run, `3` measurement incomplete or unmeasurable.
+Short sections between cuts are retained as unknown spans. Hitting the frame
+budget also prevents a whole-clip pass; increase `--max-frames` to cover the
+requested window.
 
 ## Why pixels and not a solve
 
@@ -135,6 +139,17 @@ Use `--no-segment` to force one measurement over everything.
 
 This section is the useful one.
 
+**Image scale is not proof of a dolly move.** `push-in`, `dolly-in` and `zoom-in`
+check the same scale channel, so a digital crop/resize can satisfy all three.
+Perspective, parallax and independent subject motion are not a physical 3D camera
+solve. The expectation does not verify the word "slow", exact speed, timing, or
+continuous motion at every instant. A move can backtrack up to 25% of its travel.
+
+**No generated-video accuracy benchmark is supplied.** Synthetic controls test
+known behavior; the historical real-footage results below are not a validation
+of any video generator. Changes to analysis resolution or sampling can affect
+precision and verdicts even though reported units stay normalized.
+
 **It does not detect invented geometry.** A tool like this ought to catch the
 melting-background tell, and I could not make it work. Measured over a fixed warp
 budget, real footage reached a structural residual of **1.06** while a literal
@@ -164,9 +179,12 @@ skipped, because *cannot measure* must never be reported as *measured bad*.
 
 ## Calibration
 
-Thresholds are not taste. Every bound was set by measuring real single-camera
-footage and synthetic controls with known faults; `calibration.md` records the
-distributions and `validate_real.py` re-derives them.
+The historical thresholds below were set using real single-camera footage and
+synthetic controls. `calibration.md` records those results, but the source footage
+is external and is not distributed here. The updated coverage rules have not
+been recalibrated on that dataset. Full validation now fails if clips are
+missing, truncated or unmeasurable. `--controls-only` explicitly runs only the
+reproducible synthetic portion.
 
 The requirement that shaped the tool is **silence on real footage**: across 24
 shots from two events, nothing `broken` fires, and the three `soft` findings are
@@ -239,6 +257,16 @@ and a channels-first batch is refused by name rather than measured sideways.
 `report()` renders exactly what the command line prints — the CLI calls it, so
 the two surfaces cannot drift apart.
 
+### Coverage and unknown results (0.2.2)
+
+`r.complete` is false for unknown spans, empty results, or truncated decoding.
+Such a result has `r.verdict == "unknown"` and `r.ok == False`, regardless of shot
+order. `r.as_dict()` includes `coverage`, `verdict` and `ok`; unavailable numbers
+are JSON `null`. A short unmeasured `Shot` has `path=None`. Unknown expectations
+have `measurable=False`, `ok=False`, and null measurement and movement flags;
+they print `NOT MEASURABLE`. Static checks inspect the whole path, including
+a return to the original position.
+
 ⚠️ One break in 0.2: `Result` gained a `shots` list, and `path` / `findings` /
 `verdict` / `expect` became views over it. **Reading them is unchanged**, and a
 single-shot clip answers exactly as before — but `Result(path=...)` can no longer
@@ -249,14 +277,13 @@ the command line did not.
 ## In ComfyUI
 
 [**shotdrift-comfyui**](https://github.com/Syamjith-NK/shotdrift-comfyui) measures
-the batch inside the graph that produced it, and can stop the queue when a take
-does not hold the move it was given. That is the point of measuring here rather
-than afterwards: an unattended run of sixty takes is only worth doing if the bad
-ones announce themselves.
+the batch inside the graph that produced it. Its gates can fail the current
+prompt if the move was not held or measurement is incomplete. Other prompts
+already queued in ComfyUI continue.
 
 ## Requirements
 
-Python ≥ 3.9, `numpy`, `pillow`, and **ffmpeg on PATH**. No OpenCV, no torch, no
+Python ≥ 3.9, `numpy`, `pillow`, and **ffmpeg and ffprobe on PATH** for files. No OpenCV, no torch, no
 network, no GPU. A tool that needs a 2 GB wheel to measure a camera move does not
 get run.
 
@@ -264,9 +291,18 @@ get run.
 
 ```console
 pip install -e ".[test]"
-pytest -q                                  # 83 tests
-PYTHONPATH=src python validate_real.py     # real footage + controls, as shipped
+pytest -q
+python validate_real.py --controls-only
+# Full validation requires the external real-footage dataset:
+python validate_real.py --real-manifest /path/to/clips.json --min-real-shots 24
 ```
+
+The manifest is a nonempty JSON list of objects containing `label`, `path` and
+`sha256`. Paths are relative to the manifest; every hash and clip must verify.
+Choose `--max-frames` high enough to measure each requested clip in full.
+Without a manifest the harness uses its historical local dataset paths and fails
+if they are unavailable. CI runs tests, wheel installation and synthetic demos;
+it does not claim to validate the unavailable real-footage corpus.
 
 MIT. Built by [Syamjith NK](https://syamjithnk.com) — cinematographer and AI
 creative technologist, Abu Dhabi.

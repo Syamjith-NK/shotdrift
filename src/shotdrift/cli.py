@@ -18,8 +18,7 @@ EXIT_OK, EXIT_FINDINGS, EXIT_ERROR, EXIT_UNMEASURABLE = 0, 1, 2, 3
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         prog="shotdrift",
-        description="Measure the camera move in a video, and whether it is one a real "
-                    "camera could have made.",
+        description="Estimate 2D image motion and check a declared camera-move direction.",
         epilog="Exit 0 clean, 1 findings at or above --min-severity, "
                "2 could not run, 3 clip could not be measured.",
     )
@@ -74,6 +73,8 @@ def main(argv=None) -> int:
             rc = max(rc, EXIT_ERROR)
             continue
 
+        if not r.complete:
+            rc = max(rc, EXIT_UNMEASURABLE)
         for s in r.shots:
             if s.verdict == UNKNOWN:
                 rc = max(rc, EXIT_UNMEASURABLE)
@@ -87,7 +88,7 @@ def main(argv=None) -> int:
             sys.stdout.write(report(r, quiet=args.quiet))
 
     if args.json:
-        print(json.dumps({"shotdrift": __version__, "clips": results}, indent=2))
+        print(json.dumps({"shotdrift": __version__, "clips": results}, indent=2, allow_nan=False))
     return rc
 
 
