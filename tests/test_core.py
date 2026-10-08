@@ -172,7 +172,7 @@ def test_cli_and_library_print_the_same_report():
 def test_as_dict_is_json_serialisable_and_keeps_its_shape():
     import json
     d = measure_frames(two_shots(), expect="push-in").as_dict()
-    assert sorted(d) == ["clip", "cuts", "measured_at", "shots", "source"]
+    assert sorted(d) == ["clip", "coverage", "cuts", "measured_at", "ok", "shots", "source", "verdict"]
     assert sorted(d["shots"][0]) == ["expect", "findings", "frames", "path", "verdict"]
     json.dumps(d)                                  # must not raise
 

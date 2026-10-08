@@ -83,8 +83,8 @@ def _tiles(h: int, w: int, grid: int) -> list[tuple[int, int, int, int]]:
     """Overlapping tiles. Overlap matters: a tile boundary that happens to land on
     the only vertical edge in frame leaves both neighbours unlocalisable."""
     th, tw = int(h / grid * 1.5), int(w / grid * 1.5)
-    th = max(32, min(h, th - th % 2))
-    tw = max(32, min(w, tw - tw % 2))
+    th = min(h, max(32, th - th % 2))
+    tw = min(w, max(32, tw - tw % 2))
     ys = np.linspace(0, h - th, grid).round().astype(int)
     xs = np.linspace(0, w - tw, grid).round().astype(int)
     return [(int(y), int(x), th, tw) for y in ys for x in xs]
@@ -169,6 +169,8 @@ def _morph(a: np.ndarray, b: np.ndarray, p: np.ndarray) -> float:
 
 def estimate_pair(a: np.ndarray, b: np.ndarray, grid: int = 4) -> Pair:
     """Camera parameters taking frame `a` to frame `b`, plus what they fail to explain."""
+    from .validation import integer
+    integer("grid", grid, 2)
     h, w = a.shape
     pts, dsp, wts = [], [], []
     for (y, x, th, tw) in _tiles(h, w, grid):

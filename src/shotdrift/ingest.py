@@ -30,6 +30,8 @@ def analysis_size(src_w: int, src_h: int, max_side: int = 512) -> tuple[int, int
     Even dimensions because the file path decodes through ffmpeg, which wants
     them; keeping the rule identical on both paths is the point of this function.
     """
+    from .validation import integer
+    integer("max_side", max_side, 16)
     if src_w <= 0 or src_h <= 0:
         raise ValueError(f"frame size {src_w}x{src_h} is not a picture")
     scale = min(1.0, max_side / max(src_w, src_h))
@@ -102,7 +104,7 @@ def to_gray_stack(frames, max_side: int = 512) -> tuple[np.ndarray, int, int]:
     if (w, h) != (sw, sh):
         out = np.empty((n, h, w), dtype=np.float32)
         for i in range(n):
-            im = Image.fromarray((a[i] * 255.0 + 0.5).astype(np.uint8), mode="L")
+            im = Image.fromarray((a[i] * 255.0 + 0.5).astype(np.uint8))
             out[i] = np.asarray(im.resize((w, h), Image.BILINEAR),
                                 dtype=np.float32) / 255.0
         a = out

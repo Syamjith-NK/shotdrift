@@ -52,18 +52,20 @@ BACKTRACK_OK = 0.25
 class Expectation:
     move: str
     ok: bool
-    happened: bool
-    direction_ok: bool
-    held: bool
-    measured: float
-    backtrack: float
+    happened: bool | None
+    direction_ok: bool | None
+    held: bool | None
+    measured: float | None
+    backtrack: float | None
     detail: str
+    measurable: bool = True
 
     def as_dict(self) -> dict:
         return dict(move=self.move, ok=self.ok, happened=self.happened,
                     direction_ok=self.direction_ok, held=self.held,
-                    measured=round(self.measured, 5),
-                    backtrack=round(self.backtrack, 4), detail=self.detail)
+                    measured=round(self.measured, 5) if self.measured is not None else None,
+                    backtrack=round(self.backtrack, 4) if self.backtrack is not None else None,
+                    detail=self.detail, measurable=self.measurable)
 
 
 def known() -> list[str]:
@@ -82,19 +84,36 @@ def _series(p, chan: str) -> np.ndarray:
     raise KeyError(chan)
 
 
-def check(p, move: str) -> Expectation:
+def _key(move: str) -> str:
     key = move.strip().lower().replace("_", "-")
     if key not in MOVES:
         raise KeyError(f"unknown move {move!r}; known: {', '.join(known())}")
+    return key
+
+
+def unmeasurable(move: str) -> Expectation:
+    return Expectation(_key(move), False, None, None, None, None, None,
+                       "the requested move could not be measured", measurable=False)
+
+
+def check(p, move: str) -> Expectation:
+    from .verdict import MIN_CONFIDENCE
+
+    key = _key(move)
+    if (p is None or not np.isfinite(p.confidence)
+            or p.confidence < MIN_CONFIDENCE or not np.isfinite(p.incoherence)):
+        return unmeasurable(key)
     chan, sign, human = MOVES[key]
 
     if chan == "none":
         # "Locked off" is a claim about every channel at once, so it is the one
         # case that cannot be judged on a single series.
-        worst_name, worst_val, worst_floor = "pan", p.net_pan, FLOOR["x"]
-        for nm, val, fl in (("pan", p.net_pan, FLOOR["x"]),
-                            ("zoom", abs(float(np.log(max(p.zoom, 1e-6)))), FLOOR["zoom"]),
-                            ("roll", abs(p.net_roll), FLOOR["roll"])):
+        # Check every point, including moves that return to the starting pose.
+        pan = float(np.max(np.hypot(p.tx - p.tx[0], p.ty - p.ty[0])))
+        worst_name, worst_val, worst_floor = "pan", pan, FLOOR["x"]
+        for nm, val, fl in (("pan", pan, FLOOR["x"]),
+                            ("zoom", float(np.ptp(p.logscale)), FLOOR["zoom"]),
+                            ("roll", float(np.ptp(p.roll)), FLOOR["roll"])):
             if val / fl > worst_val / worst_floor:
                 worst_name, worst_val, worst_floor = nm, val, fl
         still = worst_val < worst_floor
